@@ -2,19 +2,46 @@
 
 # Auto OPcache Configuration Script
 # Author: Manouchehr Hashemloo
-# Description: This script detects installed PHP versions and configures OPcache settings based on server resources.
+# Description: This script detects installed PHP versions and configures OPcache settings based on server resources and type of workload.
+
+# Prompt admin for server workload type
+read -p "Enter the server workload type (1 for Shared Hosting, 2 for High-Traffic Website, 3 for E-commerce): " workload_type
 
 # Detect server resources
 RAM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
 CPU_CORES=$(nproc)
 
-# Determine OPcache memory allocation based on available RAM
-if [ "$RAM_TOTAL" -ge 64000 ]; then
-  OPCACHE_MEMORY=512 # 512MB for servers with >= 64GB RAM
-elif [ "$RAM_TOTAL" -ge 32000 ]; then
-  OPCACHE_MEMORY=256 # 256MB for servers with >= 32GB RAM
+# Determine OPcache memory allocation based on available RAM and workload type
+if [ "$workload_type" == "1" ]; then
+  # Shared Hosting
+  OPCACHE_MEMORY=128
+  OPCACHE_REVALIDATE_FREQ=60
+  OPCACHE_MAX_FILES=10000
+elif [ "$workload_type" == "2" ]; then
+  # High-Traffic Website
+  if [ "$RAM_TOTAL" -ge 64000 ]; then
+    OPCACHE_MEMORY=512
+  elif [ "$RAM_TOTAL" -ge 32000 ]; then
+    OPCACHE_MEMORY=256
+  else
+    OPCACHE_MEMORY=128
+  fi
+  OPCACHE_REVALIDATE_FREQ=1
+  OPCACHE_MAX_FILES=20000
+elif [ "$workload_type" == "3" ]; then
+  # E-commerce
+  if [ "$RAM_TOTAL" -ge 64000 ]; then
+    OPCACHE_MEMORY=512
+  elif [ "$RAM_TOTAL" -ge 32000 ]; then
+    OPCACHE_MEMORY=256
+  else
+    OPCACHE_MEMORY=128
+  fi
+  OPCACHE_REVALIDATE_FREQ=0
+  OPCACHE_MAX_FILES=30000
 else
-  OPCACHE_MEMORY=128 # 128MB for smaller servers
+  echo "Invalid workload type. Exiting."
+  exit 1
 fi
 
 # OPcache configuration template
@@ -24,11 +51,14 @@ opcache.enable=1
 opcache.enable_cli=1
 opcache.memory_consumption=$OPCACHE_MEMORY
 opcache.interned_strings_buffer=16
-opcache.max_accelerated_files=10000
-opcache.revalidate_freq=2
+opcache.max_accelerated_files=$OPCACHE_MAX_FILES
+opcache.revalidate_freq=$OPCACHE_REVALIDATE_FREQ
 opcache.fast_shutdown=1
 opcache.validate_timestamps=1
 opcache.save_comments=1
+opcache.enable_file_override=1
+opcache.log_verbosity_level=2
+opcache.error_log=/var/log/opcache.log
 """
 
 # Function to configure OPcache for a PHP version
@@ -38,8 +68,12 @@ configure_opcache() {
 
   echo "Configuring OPcache for PHP $php_version..."
   if [ -f "$opcache_file" ]; then
-    echo "$OPCACHE_SETTINGS" > "$opcache_file"
-    echo "OPcache settings applied to $opcache_file"
+    if [ -w "$opcache_file" ]; then
+      echo "$OPCACHE_SETTINGS" > "$opcache_file"
+      echo "OPcache settings applied to $opcache_file"
+    else
+      echo "Error: Cannot write to $opcache_file. Check permissions."
+    fi
   else
     echo "OPcache file $opcache_file not found for PHP $php_version. Skipping."
   fi
