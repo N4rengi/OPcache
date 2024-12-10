@@ -80,6 +80,4 @@ The script logs OPcache-related errors and messages to `/var/log/opcache.log`.
 ## Contributions
 Feel free to contribute by suggesting improvements or submitting pull requests. This project aims to simplify and optimize OPcache configuration for diverse workloads.
 
-## License
-This project is licensed under the MIT License.
 
