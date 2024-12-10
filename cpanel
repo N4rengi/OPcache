@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# Auto OPcache Configuration Script
+# Author: Manouchehr Hashemloo
+# Description: This script detects installed PHP versions and configures OPcache settings based on server resources.
+
+# Detect server resources
+RAM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
+CPU_CORES=$(nproc)
+
+# Determine OPcache memory allocation based on available RAM
+if [ "$RAM_TOTAL" -ge 64000 ]; then
+  OPCACHE_MEMORY=512 # 512MB for servers with >= 64GB RAM
+elif [ "$RAM_TOTAL" -ge 32000 ]; then
+  OPCACHE_MEMORY=256 # 256MB for servers with >= 32GB RAM
+else
+  OPCACHE_MEMORY=128 # 128MB for smaller servers
+fi
+
+# OPcache configuration template
+OPCACHE_SETTINGS="""
+[opcache]
+opcache.enable=1
+opcache.enable_cli=1
+opcache.memory_consumption=$OPCACHE_MEMORY
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=10000
+opcache.revalidate_freq=2
+opcache.fast_shutdown=1
+opcache.validate_timestamps=1
+opcache.save_comments=1
+"""
+
+# Function to configure OPcache for a PHP version
+configure_opcache() {
+  local php_version=$1
+  local opcache_file=$2
+
+  echo "Configuring OPcache for PHP $php_version..."
+  if [ -f "$opcache_file" ]; then
+    echo "$OPCACHE_SETTINGS" > "$opcache_file"
+    echo "OPcache settings applied to $opcache_file"
+  else
+    echo "OPcache file $opcache_file not found for PHP $php_version. Skipping."
+  fi
+}
+
+# Detect installed PHP versions and configure OPcache
+for php_dir in /opt/alt/php*/etc/php.d.all /opt/cpanel/ea-php*/root/etc/php.d; do
+  if [ -d "$php_dir" ]; then
+    for opcache_file in $(find "$php_dir" -name '*opcache.ini'); do
+      php_version=$(echo "$opcache_file" | grep -oP 'php\d+')
+      configure_opcache "$php_version" "$opcache_file"
+    done
+  fi
+done
+
+# Restart web server to apply changes
+if systemctl is-active --quiet lsws; then
+  echo "Restarting LiteSpeed Web Server..."
+  systemctl restart lsws
+elif systemctl is-active --quiet httpd; then
+  echo "Restarting Apache Web Server..."
+  systemctl restart httpd
+else
+  echo "No web server detected or running. Please restart manually if required."
+fi
+
+# Completion message
+echo "OPcache configuration completed successfully."
